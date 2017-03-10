@@ -4,7 +4,8 @@
 
 const helpers = require('./helpers');
 const path = require('path');
-
+const stringify = require('json-stringify');
+const sass = require('./sass');
 /**
  * Webpack Plugins
  */
@@ -13,13 +14,15 @@ const ProvidePlugin = require('webpack/lib/ProvidePlugin');
 const ContextReplacementPlugin = require('webpack/lib/ContextReplacementPlugin');
 const DefinePlugin = require('webpack/lib/DefinePlugin');
 const LoaderOptionsPlugin = require('webpack/lib/LoaderOptionsPlugin');
-const ExtractTextPlugin = require('extract-text-webpack-plugin');
+// const ExtractTextPlugin = require('extract-text-webpack-plugin');
 
 /**
  * Webpack Constants
  */
 const ENV = process.env.ENV = process.env.NODE_ENV = 'test';
 const API_URL = process.env.API_URL || (ENV==='inmemory'?'app/':'http://localhost:8080/api/');
+const FABRIC8_WIT_API_URL = process.env.FABRIC8_WIT_API_URL;
+const FABRIC8_RECOMMENDER_API_URL = process.env.FABRIC8_RECOMMENDER_API_URL || 'http://api-bayesian.dev.rdu2c.fabric8.io/api/v1/';
 
 /**
  * Webpack configuration
@@ -77,7 +80,7 @@ module.exports = function (options) {
        *
        * See: http://webpack.github.io/docs/configuration.html#module-loaders
        */
-      loaders: [
+      rules: [
 
         /**
          * Source map loader support for *.js files
@@ -87,7 +90,7 @@ module.exports = function (options) {
          */
         {
           test: /\.js$/,
-          loader: 'source-map-loader',
+          use: ['source-map-loader'],
           exclude: [
             // these packages have problems with their sourcemaps
             helpers.root('node_modules/rxjs'),
@@ -102,7 +105,7 @@ module.exports = function (options) {
          */
         {
           test: /\.ts$/,
-          loaders: [
+          use: [
             'awesome-typescript-loader',
             'angular2-template-loader'
           ],
@@ -116,24 +119,70 @@ module.exports = function (options) {
          */
         {
           test: /\.json$/,
-          loader: 'json-loader',
+          use: ['json-loader'],
           exclude: [helpers.root('src/index.html')]
         },
 
-        /**
-         * Raw loader support for *.css files
+        /*
+         * to string and css loader support for *.css files
          * Returns file content as string
          *
-         * See: https://github.com/webpack/raw-loader
          */
         {
           test: /\.css$/,
-          loaders: ['to-string-loader', 'css-loader']
+          loaders: [
+            { loader: "to-string-loader" },
+            {
+              loader: "style-loader"
+            },
+            {
+              loader: "css-loader"
+            },
+          ],
         },
 
         {
           test: /\.scss$/,
-          loaders: ["css-to-string-loader", "css-loader", "sass-loader"]
+          loaders: [
+            {
+              loader: 'to-string-loader'
+            }, {
+              loader: 'css-loader'
+            }, {
+              loader: 'sass-loader',
+              query: {
+                includePaths: sass.modules.map(val => {
+                  return val.sassPath;
+                })
+              }
+            }
+          ]
+        },
+
+        /* File loader for supporting fonts, for example, in CSS files.
+         */
+        {
+          test: /\.woff2?$|\.ttf$|\.eot$|\.svg$/,
+          loaders: [
+            {
+              loader: "url-loader",
+              query: {
+                limit: 3000,
+                name: 'vendor/fonts/[name].[hash].[ext]'
+              }
+            }
+          ]
+        }, {
+          test: /\.jpg$|\.png$|\.gif$|\.jpeg$/,
+          loaders: [
+            {
+              loader: "url-loader",
+              query: {
+                limit: 3000,
+                name: 'vendor/images/[name].[hash].[ext]'
+              }
+            }
+          ]
         },
         /**
          * Raw loader support for *.html
@@ -143,27 +192,9 @@ module.exports = function (options) {
          */
         {
           test: /\.html$/,
-          loader: 'raw-loader',
+          use: ['raw-loader'],
           exclude: [helpers.root('src/index.html')]
-        },
-
-        // /**
-        //  * Instruments JS files with Istanbul for subsequent code coverage reporting.
-        //  * Instrument only testing sources.
-        //  *
-        //  * See: https://github.com/deepsweet/istanbul-instrumenter-loader
-        //  */
-        // {
-        //   enforce: 'post',
-        //   test: /\.(js|ts)$/,
-        //   loader: 'istanbul-instrumenter-loader',
-        //   include: helpers.root('src'),
-        //   exclude: [
-        //     /\.(e2e|spec)\.ts$/,
-        //     /node_modules/
-        //   ]
-        // }
-
+        }
       ]
     },
 
@@ -185,13 +216,13 @@ module.exports = function (options) {
        */
       // NOTE: when adding more properties make sure you include them in custom-typings.d.ts
       new DefinePlugin({
-        'ENV': JSON.stringify(ENV),
+        'ENV': stringify(ENV),
         'HMR': false,
         'process.env': {
-          'ENV': JSON.stringify(ENV),
-          'API_URL': JSON.stringify(API_URL),
-          'NODE_ENV': JSON.stringify(ENV),
-          'HMR': false,
+          'ENV': stringify(ENV),
+          'API_URL': stringify(API_URL),
+          'NODE_ENV': stringify(ENV),
+          'HMR': false
         }
       }),
 
@@ -227,11 +258,9 @@ module.exports = function (options) {
             emitErrors: false,
             failOnHint: false,
             resourcePath: 'src'
-          },
-
+          }
         }
-      }),
-
+      })
     ],
 
     /**
@@ -248,6 +277,5 @@ module.exports = function (options) {
       clearImmediate: false,
       setImmediate: false
     }
-
   };
 };

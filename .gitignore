@@ -1,7 +1,15 @@
 # @AngularClass
 
+# compiled output
+/dist
+/dist-watch
+
 # Build generated files
 src/app/**/*.css
+/compiled
+*.metadata.json
+*.ngFactory.ts
+
 
 # Logs
 logs
@@ -66,3 +74,4 @@ npm-debug.log
 .vscode/
 
 *.ngsummary.json
+*.css

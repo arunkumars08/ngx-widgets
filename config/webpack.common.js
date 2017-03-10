@@ -1,33 +1,40 @@
 /**
  * Adapted from angular2-webpack-starter
  */
-
-const helpers = require('./helpers'),
+const path = require('path'),
+  helpers = require('./helpers'),
   webpack = require('webpack'),
+  sass = require('./sass'),
   CleanWebpackPlugin = require('clean-webpack-plugin');
+// const stringify = require('json-stringify');
 
 /**
  * Webpack Plugins
  */
-const AssetsPlugin = require('assets-webpack-plugin');
-const autoprefixer = require('autoprefixer');
-const CheckerPlugin = require('awesome-typescript-loader').CheckerPlugin;
-const CommonsChunkPlugin = webpack.optimize.CommonsChunkPlugin;
+// const AssetsPlugin = require('assets-webpack-plugin');
+// const autoprefixer = require('autoprefixer');
+// const CheckerPlugin = require('awesome-typescript-loader').CheckerPlugin;
+// const CommonsChunkPlugin = webpack.optimize.CommonsChunkPlugin;
 const ContextReplacementPlugin = require('webpack/lib/ContextReplacementPlugin');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
+// const CopyWebpackPlugin = require('copy-webpack-plugin');
 const DefinePlugin = require('webpack/lib/DefinePlugin');
 const ExtractTextPlugin = require('extract-text-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const HtmlElementsPlugin = require('./html-elements-plugin');
+// const HtmlElementsPlugin = require('./html-elements-plugin');
 const IgnorePlugin = require('webpack/lib/IgnorePlugin');
 const LoaderOptionsPlugin = require('webpack/lib/LoaderOptionsPlugin');
 // const ngcWebpack = require('ngc-webpack');
 const NormalModuleReplacementPlugin = require('webpack/lib/NormalModuleReplacementPlugin');
 const OptimizeJsPlugin = require('optimize-js-plugin');
 const ProvidePlugin = require('webpack/lib/ProvidePlugin');
-const ScriptExtHtmlWebpackPlugin = require('script-ext-html-webpack-plugin');
+// const ScriptExtHtmlWebpackPlugin = require('script-ext-html-webpack-plugin');
 const UglifyJsPlugin = require('webpack/lib/optimize/UglifyJsPlugin');
 
+// ExtractTextPlugin
+const extractCSS = new ExtractTextPlugin({
+  filename: '[name].[id].css',
+  allChunks: true
+});
 
 module.exports = {
   devtool: 'inline-source-map',
@@ -39,7 +46,7 @@ module.exports = {
   entry: helpers.root('index.ts'),
 
   // require those dependencies but don't bundle them
-  externals: [/^\@angular\//, /^rxjs\//],
+  externals: [/^@angular\//, /^rxjs\//],
 
   module: {
     rules: [
@@ -56,40 +63,78 @@ module.exports = {
             loader: 'awesome-typescript-loader',
             options: {
               declaration: false
-            },
+            }
           },
           {
             loader: 'angular2-template-loader'
           }
         ],
         exclude: [/\.spec\.ts$/]
+      },{
+        test: /\.css$/,
+        loader: extractCSS.extract({
+          fallback: "style-loader",
+          use: "css-loader?sourceMap&context=/"
+        })
+      }, {
+        test: /\.scss$/,
+        loaders: [
+          {
+            loader: 'to-string-loader'
+          }, {
+            loader: 'css-loader',
+            options: {
+              sourceMap: true,
+              context: '/'
+            }
+          }, {
+            loader: 'sass-loader',
+            options: {
+              includePaths: sass.modules.map(val => {
+                return val.sassPath;
+              }),
+              sourceMap: true
+            }
+          }
+        ]
       },
-      // copy those assets to output
+
+      /* File loader for supporting fonts, for example, in CSS files.
+       */
       {
-        test: /\.(png|jpe?g|gif|svg|woff|woff2|ttf|eot|ico)(\?v=[0-9]\.[0-9]\.[0-9])?$/,
-        use: 'file-loader?name=fonts/[name].[hash].[ext]?'
+        test: /\.woff2?$|\.ttf$|\.eot$|\.svg$/,
+        loaders: [
+          {
+            loader: "url-loader",
+            query: {
+              limit: 3000,
+              name: 'assets/fonts/[name].[ext]'
+            }
+          }
+        ]
+      }, {
+        test: /\.jpg$|\.png$|\.gif$|\.jpeg$/,
+        loaders: [
+          {
+            loader: "url-loader",
+            query: {
+              limit: 3000,
+              name: 'assets/fonts/[name].[ext]'
+            }
+          }
+        ]
       },
 
       // Support for *.json files.
       {
         test: /\.json$/,
-        use: 'json-loader'
-      },
-
-      {
-        test: /\.css$/,
-        loaders: ['to-string-loader', 'css-loader']
-      },
-
-      {
-        test: /\.scss$/,
-        loaders: ["css-to-string-loader", "css-loader", "sass-loader"]
+        use: ['json-loader']
       },
 
       // todo: change the loader to something that adds a hash to images
       {
         test: /\.html$/,
-        use: 'raw-loader'
+        use: ['raw-loader']
       }
     ]
   },
@@ -138,17 +183,17 @@ module.exports = {
          * See: https://github.com/webpack/html-loader#advanced-options
          */
         // TODO: Need to workaround Angular 2's html syntax => #id [bind] (event) *ngFor
-        htmlLoader: {
-          minimize: true,
-          removeAttributeQuotes: false,
-          caseSensitive: true,
-          customAttrSurround: [
-            [/#/, /(?:)/],
-            [/\*/, /(?:)/],
-            [/\[?\(?/, /(?:)/]
-          ],
-          customAttrAssign: [/\)?\]?=/]
-        },
+        // htmlLoader: {
+        //   minimize: true,
+        //   removeAttributeQuotes: false,
+        //   caseSensitive: true,
+        //   customAttrSurround: [
+        //     [/#/, /(?:)/],
+        //     [/\*/, /(?:)/],
+        //     [/\[?\(?/, /(?:)/]
+        //   ],
+        //   customAttrAssign: [/\)?\]?=/]
+        // },
 
         tslintLoader: {
           emitErrors: false,
@@ -188,6 +233,7 @@ module.exports = {
       root: helpers.root(),
       verbose: false,
       dry: false
-    })
+    }),
+    extractCSS
   ]
 };

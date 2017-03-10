@@ -1,85 +1,123 @@
 
 var gulp = require('gulp'),
-  sass = require('gulp-sass'),
+  sassCompiler = require('gulp-sass'),
   runSequence = require('run-sequence'),
-  minifyCss = require('gulp-minify-css'),
-  sourcemaps = require('gulp-sourcemaps'),
-  tsc = require('gulp-typescript'),
-  embedTemplates = require('gulp-inline-ng2-template'),
-  wait = require('gulp-wait'),
   del = require('del'),
-  exec = require('child_process').exec;
+  replace = require('gulp-string-replace'),
+  sourcemaps = require('gulp-sourcemaps'),
+  exec = require('child_process').exec,
+  ngc = require('gulp-ngc'),
+  changed = require('gulp-changed'),
+  sass = require('./config/sass');
 
 var appSrc = 'src';
-var librarySrc = 'src-library';
-var libraryDist = 'dist-library';
+var libraryDist = 'dist';
+var watchDist = 'dist-watch';
+var globalExcludes = [ '!./**/examples/**', '!./**/examples' ]
 
-var tsProject = tsc.createProject('tsconfig.json');
+/**
+ * FUNCTION LIBRARY
+ */
 
-gulp.task('build:library', function(done) {
-  runSequence(
-    'clean',
-    'compile-sass',
-    'compile-typings',
-    'assets',
-    'copy-library-definitions',
-    done
-  );
-});
+function copyToDist(srcArr) {
+  return gulp.src(srcArr.concat(globalExcludes))
+    .pipe(gulp.dest(function (file) {
+      return libraryDist + file.base.slice(__dirname.length); // save directly to dist
+    }));
+}
 
-gulp.task('clean', function (done) {
-  return del([libraryDist], done);
-});
+function updateWatchDist() {
+  return gulp
+    .src([libraryDist + '/**'].concat(globalExcludes))
+    .pipe(changed(watchDist))
+    .pipe(gulp.dest(watchDist));
+}
 
-//Sass compilation and minifiction
-gulp.task('compile-sass', function () {
-  return gulp.src(appSrc + '/app/**/*.scss')
-    .pipe(sass().on('error', sass.logError)) // this will prevent our future watch-task from crashing on sass-errors
-    .pipe(minifyCss({compatibility: 'ie8'})) // see the gulp-sass doc for more information on compatibilitymodes
-    .pipe(gulp.dest(function(file) {
+function transpileSASS(src) {
+  return gulp.src(src)
+    .pipe(sourcemaps.init())
+    .pipe(sassCompiler({
+      outputStyle: 'compressed',
+      includePaths: sass.modules.map(val => {
+        return val.sassPath;
+      }),
+    }).on('error', sassCompiler.logError)) // this will prevent our future watch-task from crashing on sass-errors
+    .pipe(sourcemaps.write())
+    .pipe(gulp.dest(function (file) {
+      return libraryDist + file.base.slice(__dirname.length); // save directly to dist
+    }));
+}
+
+/**
+ * TASKS
+ */
+
+gulp.task('post-transpile', ['transpile'], function () {
+  return gulp.src(['dist/src/app/**/*.js'])
+    .pipe(replace(/templateUrl:\s/g, "template: require("))
+    .pipe(replace(/\.html',/g, ".html'),"))
+    .pipe(replace(/\.html'/g, ".html')"))
+    .pipe(replace(/styleUrls: \[/g, "styles: [require("))
+    .pipe(replace(/\.scss']/g, ".css').toString()]"))
+    .pipe(gulp.dest(function (file) {
       return file.base; // because of Angular 2's encapsulation, it's natural to save the css where the scss-file was
     }));
 });
 
-//typescript compilation including sourcemaps and template embedding
-gulp.task('compile-typings', function() {
-
-  //loading typings file
-  return gulp.src([ appSrc + '/app/**/*.ts', '!' + appSrc + '/app/**/*.spec.ts'])
-    .pipe(embedTemplates({
-      base: appSrc + '/app',
-      useRelativePaths: true,
-      supportNonExistentFiles: true,
-      target: 'es5'
-    }))
-    .pipe(tsProject())
-    .pipe(sourcemaps.init())
-    .pipe(sourcemaps.write('./'))
-    .pipe(gulp.dest(libraryDist + '/lib'));
+//Sass compilation and minifiction
+gulp.task('transpile-sass', function () {
+  return transpileSASS(appSrc + '/app/**/*.scss');
 });
 
-gulp.task('assets', function(done) {
-  return gulp.src(['src/assets/*/**', 'src/*.*'])
+// Put the SASS files back to normal
+gulp.task('build-library',
+  [
+    'transpile',
+    'post-transpile',
+    'transpile-sass',
+    'copy-html',
+    'copy-static-assets'
+  ]);
+
+gulp.task('transpile', function () {
+  return ngc('tsconfig.json')
+});
+
+gulp.task('copy-html', function () {
+  return copyToDist([
+    'src/**/*.html'
+  ]);
+});
+
+gulp.task('copy-static-assets', function () {
+  return gulp.src([
+    'LICENSE',
+    'README.adoc',
+    'package.json',
+  ])
     .pipe(gulp.dest(libraryDist));
 });
 
-gulp.task('copy-library-definitions', function(done) {
-  let files = [
-    'package.json',
-    'README.adoc',
-    'LICENSE',
-    librarySrc + '/components.d.ts',
-    librarySrc + '/components.js'
-  ];
-  return gulp.src(files).pipe(gulp.dest(libraryDist));
+gulp.task('copy-watch', ['post-transpile'], function() {
+  return updateWatchDist();
 });
 
-gulp.task('watch', function () {
-  gulp.watch([appSrc + '/app/**/*.ts', '!' + appSrc + '/app/**/*.spec.ts'], ['compile']).on('change', function (e) {
+gulp.task('copy-watch-all', ['build-library'], function() {
+  return updateWatchDist();
+});
+
+gulp.task('watch', ['build-library', 'copy-watch-all'], function () {
+  gulp.watch([appSrc + '/app/**/*.ts', '!' + appSrc + '/app/**/*.spec.ts'], ['transpile', 'post-transpile', 'copy-watch']).on('change', function (e) {
     console.log('TypeScript file ' + e.path + ' has been changed. Compiling.');
   });
-  gulp.watch([appSrc + '/app/**/*.ts', '!' + appSrc + '/app/**/*.spec.ts'], ['resources']).on('change', function (e) {
-    console.log('Resource file ' + e.path + ' has been changed. Updating.');
+  gulp.watch([appSrc + '/app/**/*.scss']).on('change', function (e) {
+    console.log(e.path + ' has been changed. Updating.');
+    transpileSASS(e.path);
+    updateWatchDist();
+  });
+  gulp.watch([appSrc + '/app/**/*.html']).on('change', function (e) {
+    console.log(e.path + ' has been changed. Updating.');
+    copyToDist(e.path);
+    updateWatchDist();
   });
 });
-
